@@ -29,6 +29,12 @@ Examples:
 EOF
 }
 
+fatal() {
+    usage
+    echo $@
+    exit 1
+}
+
 while test $# -gt 0; do
   case $1 in
     *-service)
@@ -61,23 +67,29 @@ while test $# -gt 0; do
 done
 
 if [ -z "$SVC" ]; then
-  usage
-  echo "ERROR: no --service parameter ($SERVICES)"
-  exit 1
+  fatal "ERROR: no --service parameter ($SERVICES)"
 fi
 if [ -z "$REPO" ]; then
-  usage
-  echo "ERROR: no --repo parameter"
-  exit 1
+  fatal "ERROR: no --repo parameter"
 fi
 
-case $SVC in
+repo_regexp="^[A-Za-z0-9_-]*/[A-Za-z0-9_-]*$"
+if ! [[ $REPO =~ $repo_regexp ]]; then
+    fatal "ERROR: repo '$REPO'is not in area/repo format (omit .git and any http://.../ part)"
+fi
+
+tag_regexp="^[A-Za-z0-9_.-]*$"
+if ! [[ $TAG =~ $tag_regexp ]]; then
+    fatal "ERROR: repo '$TAG'is not valid (must match '$tag_regexp')"
+fi
+
+case "$SVC" in
     github)
-        URL=git://github.com/${REPO}.git ;;
+        URL="git://github.com/${REPO}.git" ;;
     gitorious)
-        URL=git://gitorious.org/${REPO}.git ;;
+        URL="git://gitorious.org/${REPO}.git" ;;
     mer)
-        URL=http://gitweb.merproject.org/gitweb/${REPO}.git/ ;;
+        URL="http://gitweb.merproject.org/gitweb/${REPO}.git/" ;;
     *)
         echo "Sorry, git service $SVC is not whitelisted. please contact lbt in #mer"
         exit 1 ;;
@@ -100,17 +112,18 @@ cd $SVC/$REPO
 
 # clone or update
 if [ -d .git ]; then
-    git remote update --prune
-    git fetch --all
-    git fetch --tags
+    git remote update --prune || fatal "git remote update failed"
+    git fetch --force --all || fatal "git fetch --all failed"
+    git fetch --force --tags || fatal "git fetch --tags failed"
 else
-    git clone $URL .
+    git clone -n "$URL" . || fatal "git clone $URL failed"
 fi
-/usr/lib/obs/service/gp_mkpkg $TAG
+
+/usr/bin/gp_mkpkg --build "$TAG" || fatal "gp_mkpkg $TAG failed"
 
 if [ ! -z "$OUTDIR" ]; then
     # Move all files to OUTDIR
-    mv $(find . -mindepth 1 -maxdepth 1 -not -name .git) $OUTDIR
+    find . -mindepth 1 -maxdepth 1 -not -name .git -print0 | xargs -0 -I files mv files "$OUTDIR"
 fi
 
 exit 0

@@ -1,9 +1,51 @@
 This tool supports managing rpm packaging (spec files and patches) from a git tree.
 
+Normal Operation
+================
+
+New release of a working package that needs a patch? use --rel:
+
+* Checkout the mer-master branch
+* Commit your changes/patches
+* gp_release --rel=<Ver-Rel>
+* git push --tags origin master pkg-mer
+
+Want to work on the packaging? Same approach but do --edit and then commit
+your packaging changes:
+
+* gp_release --rel=<Ver-Rel> --edit
+* hack on the packaging
+* git commit -am"Release <Ver-Rel>"
+
+Fancy using osc to do a local verify build?
+
+* osc co myprj/pkg
+* cd myprj/pkg
+* gp_release --git-dir=<my gitpkg repo with changes>
+* osc build
+
+Need to setup a new package?
+
+* Clone upstream
+* Find the right tag and see if a pristine-tar should also be used
+* Got some good packaging from OBS? Use --auto
+* gp_setup --auto --pristine --base-on=RELEASE_0_9_7 --pkgdir=<good packaging> --ver=0.9.7-1
+otherwise:
+
+* gp_setup --manual --pkgdir=<rough packaging> --ver=0.9.7-1
+
+New upstream version? use --ver:
+
+* Checkout the mer-master branch or pull the upstream and tags
+* gp_release --ver=<release-tag>
+* git push --tags origin master pkg-mer
+
+Basically gp_release is for managing Version: and Release: and adding patches; gp_setup is for setting up new package repositories. Other tools are used by the OBS to checkout the code for building.
+
 Why is it needed?
 =================
 
-The rpm packaging used in Mer and derived products consists of a tarball and some packaging files. These packages need to be change controlled and that is where problems arise.
+The rpm packaging used in Mer and derived products consists of a tarball and some packaging files. These packages need to be change controlled and that is where gitpkg comes in.
 
 Currently for Mer Core the raw tarball, patches and packaging files are stored in git.
 
@@ -31,69 +73,19 @@ For a distro/product there are 2 types of package:
 
 gitpkg is useful for both upstream and native packages and ensures that packaging is kept distinct from the code.
 
-The tool assumes that OBS is not being used as the primary store for code and packaging.
+The tool assumes that OBS is not being used as the primary store for code and packaging and that vanilla rpm/tarball+spec is the basic build source.
 
-Notes:
-
-* The tarball uses src/ as the location for git packages unless pristine-tar is in use
 
 What does it do?
 ================
 
-There are 2 main uses:
+There are a few main use cases:
 
-* create tarball, spec and patches for building/uploading to OBS
-* setup existing packages into a suitable git tree
+* Setup a new package from git and (possibly pre-existing) packaging
+* Add/modify a patch and update packaging
+* New upstream release and update packaging
 
-Normal Operation
-================
-
-Assuming a working package that needs changing.
-
-Link the git and osc directories: typically go to the osc co directory::
-
-  rm *
-  ln -s /path/to/package/.git .git   # (Should this be a local clone?)
-  gp_mkpkg
-
-Now do an osc build to prepare the build environment::
-
-  osc build
-
-Work in the git code tree and use local osc build and quickbuild to get the code working::
-
-  git checkout <code branch>
-
-Once all code is correct, tag it and checkout the pkg branch
-
-Edit the _src file to update the tag for the patches and/or the tarball.
-
-Generate the patches files::
-
-  gp_mkpkg
-
-(FIXME: This needs to support --update-spec and --update-yaml)
-
-Now edit the .spec file and update the Version: Release: (and Patches:/%build)
-
-Edit the .changes file
-FIXME: suggest some changes by parsing the git log)
-
-Add changes to git packaging branch (some operations may need more care)::
-
-  git add *spec *changes _src
-
-Then commit and push::
-
-  git commit -s
-  git push ....
-
-Example packages:
-
-* Upstream tarball: ``acl``
-* Upstream git: ``build``
-* Upstream git + autoconf code in released tarball: ``rpm``
-* Native git: ``mer-gfx-tests``
+* Create tarball, spec and patches for building/uploading to OBS
 
 
 Using gp_setup
@@ -101,14 +93,11 @@ Using gp_setup
 
 This can be used to simply create a suitable packaging branch or to import existing packaging.
 
-The TLDR answer::
-
-  gp_setup --existing --pristine --base=RELEASE_0_9_7 --pkgdir=/mer/obs/cobs/Project:KDE:Mer_Extras/oprofile --patch-branch=0.9.7
 
 Worked Example: Importing oprofile
-==================================
+----------------------------------
 
-Upstream uses git so we'll use --base to base off it after cloning it::
+Upstream uses git so we'll use --base-on to base off it after cloning it::
 
   git clone git://oprofile.git.sourceforge.net/gitroot/oprofile/oprofile
   cd oprofile
@@ -119,15 +108,17 @@ We have some packaging so check it out (in a different window)::
 
   osc co Project:KDE:Mer_Extras oprofile
 
-so we can use --existing
+so we can use --auto
 
-Looking at the tarball there are changes to the git tree (autogen.sh etc) so we'll use --pristine
+Looking at the tarball that is released we see there are changes to the git tree (autogen.sh etc) so we'll use --pristine.
 
-The release tag is "RELEASE_0_9_7" so that will be the --base value; we'll also have a patch-branch of 0.9.7 which we can make Mer release tags on if we add patches.
+The release tag is "RELEASE_0_9_7" so that will be the --base-on value; since this isn't a simple version we need to specify --rel=0.9.7-1
 
 The command then is::
 
-  gp_setup --existing --pristine --base=RELEASE_0_9_7 --pkgdir=/mer/obs/cobs/Project:KDE:Mer_Extras/oprofile --patch-branch=0.9.7
+  gp_setup --auto --pristine --base-on=RELEASE_0_9_7 \
+           --pkgdir=/mer/obs/cobs/Project:KDE:Mer_Extras/oprofile \
+           --ver=0.9.7-1
 
 
 More examples:
@@ -135,24 +126,11 @@ More examples:
 Project with an upstream git and some existing packaging::
 
   git clone upstream
-  gp_setup --existing --base=v3.1.7 --pkgdir=/mer/obs/cobs/Mer:Tools:Testing/pciutils/ --patch-branch=v3.1.7-3
-
-Project with an upstream git, a pristine tar and some existing packaging::
-
-  git clone upstream
-  gp_setup --existing --pristine --base=v3.1.7 --pkgdir=/mer/obs/cobs/Mer:Tools:Testing/pciutils/ --patch-branch=v3.1.7-3
+  gp_setup --auto --base-on=v3.1.7 --pkgdir=/mer/obs/cobs/Mer:Tools:Testing/pciutils/ --ver=3.1.7-3
 
 Project with no upstream git a pristine tar and some existing packaging but no patches (using sudo as an example)::
 
-  git init
-  gp_setup --existing --pristine --unpack=1.8.2 --pkgdir=/mer/obs/cobs/home:lbt:branches:Mer:Tools:Testing/sudo --patch-branch=mer-1.8.2
-
-Project with no upstream git a pristine tar and some existing packaging with patches::
-
-  git init
-  gp_setup --existing --pristine --unpack=/mer/obs/cobs/Mer:Tools:Testing/tcl --base=
-
-(needs tags for master and for mer-branch --unpack=<tag>)
+  gp_setup --auto --pristine --unpack-to=1.8.2 --pkgdir=/mer/obs/cobs/Mer:Tools:Testing/sudo
 
 
 Git Names and branch layouts
@@ -160,68 +138,48 @@ Git Names and branch layouts
 
 ver is X.Y.Z and is conceptually an upstream version and ideally a tag.
 
-X.Y.Z-R is the mer version/tag
+Releases are identified as X.Y.Z-R
 
+branch names:
+
+* master
+* mer-master
+* pkg-mer
+
+tag formats:
+
+* <base>
+* mer-<ver>-<rel>
+* pkg-mer-<ver>-<rel>
 
  upstream/master
             upstream or master branch (can be anything - often a specific
 	    branch with rc releases eg in rpm or OBS)
 
- mer-<ver>
-            mer branch per upstream release (re-created based on each
-	    upstream release).
+ mer-master
+            This is the patch branch; it is a branch per upstream
+	    release which splits from the upstream at the 'base' tag
+	    and contains distro specific patches. It is rebased for
+	    each upstream release. This branch contains the code used
+	    by the packaging.
 
-	    Commits are handled as patches in spec files.
+	    Tags here will be of the form mer-<ver>-<rel>
+
+            Tags are made on here to preserve commits and the branch
+	    may be re-based if needed (eg if a patch is removed
+	    between -1 and -2 releases)
 
 	    If using pristine-tar then the initial commit is the
 	    pristine-tar delta and is not applied as a patch - it's
 	    simply there to allow development patches apply cleanly to
 	    the tarball.
 
-            Tags are made on here to preserve commits and the branch
-	    may be re-based if needed (eg if a patch is removed
-	    between -1 and -2 releases) Tags here will be of the form
-	    mer-X.Y.Z-R
-
  pkg-mer
             Discrete commit tree holding any packaging.
-	    Tags of pkg-mer-X.Y.Z-R
+	    Tags of pkg-mer-<ver>-<rel>
 
 
-Git support for multiple sources is possible but complex
-
-Suggested Naming For Non-native packages
-========================================
-
-The 'upstream' branch will usually be called master but this isn't
-very important.
-
-There should be tags on the upstream code repo with a version.  If
-there are any local patches or if pristine-tar is being used then
-create a branch called mer-<version> based from this tag.
-Mer specific patches/commits should be on the mer-<version> branch.
-
-Tags of the form mer-<version>-<release> should be made on the
-mer-<version> branch.
-
-In the pkg-mer branch, there should be tags made called
-pkg-mer-<version>-<release>. Typically the _src will be
-git:<name>:<version tag>:mer-<version-release tag>.
-
-To be explicit mer-<version>-<release> tags should be made against the
-code repo even when there has been no change to the code.
-
-Suggested Naming For Native packages
-====================================
-
-The main development branch will usually be called master but this
-isn't very important.
-
-There should be tags on the main branch with a version.
-
-In the pkg-mer branch, there should be tags made called
-pkg-mer-<version>-<release>. Typically the _src will be
-git:<name>:<version tag>.
+Git support for multiple sources is possible but more complex
 
 
 The _src file
@@ -257,6 +215,59 @@ One line:
     in the pristine tarball.
     The filename is obtained from pristine-tar checkout
 
+
+Walkthrough for Powertop
+========================
+
+Find the upstream and clone it::
+
+ git clone git://github.com/fenrus75/powertop.git
+
+ git checkout -f v2.1.1
+ gp_setup --manual --ver=2.1.1-1
+
+At this point you are in the packaging branch. Providing a --rel lets
+gp_setup do some tagging for us.
+
+Edit yaml/spec/changes and create some packaging (we'll cheat and use philippe's)::
+
+ curl -kOL https://github.com/philippedeswert/powertop/raw/pkg-mer/powertop.changes
+ curl -kOL https://github.com/philippedeswert/powertop/raw/pkg-mer/powertop.spec
+ curl -kOL https://github.com/philippedeswert/powertop/raw/pkg-mer/powertop.yaml
+
+Describe in the _src file how OBS gets the source (in this case, use simple git archive to make a tar.bz2 based on the tag v2.1.1)::
+
+ echo git:powertop-v2.1.1.tar.bz2:mer-2.1.1-1 > _src
+ git add powertop.* _src
+
+Check to ensure it builds.
+
+First we must create an osc package to build the source in.
+
+Go to a suitable OBS directory with Mer_Core_i486 or similar as a repo target.
+
+Now create the package::
+  
+  osc mkpac powertop
+  cd powertop
+
+Now we're in a suitable osc directory we can setup git::
+
+ gp_release --git-dir=<working git dir>
+ osc build Mer_Core_i486 i586
+
+All good, commit::
+
+ git commit -s
+
+
+TODO
+====
+
+[ ] Improve hack-testing. ie incorporate uncommitted changes into a build
+
+
+
 Notes
 =====
 
@@ -272,126 +283,4 @@ Sage asked if it was possible to just clone the packaging or source - it is but 
  sed -i '/fetch/s/\*/\pkg-mer/g' .git/config
  git fetch mer-tools
 
-
-
-Walkthrough for Powertop
-========================
-
-First we must create an osc package to build the source in.
-
-Go to a suitable OBS directory with Mer_Core_i486 or similar as a repo target.
-
-Now create the package:
-  
-  osc mkpac powertop
-  cd powertop
-
-Now we're in a suitable osc directory we can setup git.
-
-Find the upstream, clone and move the .git dir to the osc dir:
-
- git clone git://github.com/fenrus75/powertop.git
- mv powertop/.git .
- rm -rf powertop
-
-What tag are we based on?
-
- git checkout -f v2.1.1
- gp_setup --pkg
-
-At this point you are in the packaging branch
-In the future gp_setup --pkg=<tag> will do the git checkout <tag> next release
-
-Edit yaml/spec/changes and create some packaging (we'll cheat and use philippe's):
-
- curl -kOL https://github.com/philippedeswert/powertop/raw/pkg-mer/powertop.changes
- curl -kOL https://github.com/philippedeswert/powertop/raw/pkg-mer/powertop.spec
- curl -kOL https://github.com/philippedeswert/powertop/raw/pkg-mer/powertop.yaml
-
-Describe in the _src file how OBS gets the source (in this case, use simple git archive to make a tar.bz2 based on the tag v2.1.1)
-
- echo git:powertop-v2.1.1.tar.bz2:v2.1.1 > _src
- git add powertop.* _src
-
-Check to ensure it builds:
-
- gp_mkpkg
- osc build Mer_Core_i486 i586
-
-All good, commit:
- git commit -s
-
-
-Walkthrough for adding a patch to osc
-=====================================
-
-Branch the package on the OBS:
-
- osc branch Mer:Tools:Testing osc
- osc co home:${USER}:branches:Mer:Tools:Testing osc
- cd home:${USER}:branches:Mer:Tools:Testing/osc
-
-on github, fork the git repo and checkout your copy:
-
- git clone --bare git@github.com:${USER}/osc.git .git
- git config -f .git/config core.bare false
-
-Checkout the packaging
- gp_mkpkg
-
-Now hack on the code
- mer-0.135.1-2
-
-FIXME::Complete this
-
-Walkthrough upgrading a pristine tar package (sudo)
-===================================================
-
-cd home:lbt:branches:Mer:Tools:Testing
-osc branch Mer:Tools:Testing sudo
-osc co sudo
-cd sudo
-# gp_clone git@github.com:lbt/sudo.git
-# (actually this can do gh clone to ~ first too)
-git clone --no-checkout --bare git@github.com:lbt/sudo.git .git
-git config -f .git/config core.bare false
-git checkout -f pkg-mer
-gp_mkpkg 
-
-Now to update it. (# This section is gp_import_tarball)
-(cd ..; curl -O http://www.sudo.ws/sudo/dist/sudo-1.8.6p3.tar.gz)
-git checkout master
-git rm -rf *
-tar --transform 's_[^/]*/__' -xf ../sudo-1.8.6p3.tar.gz
-git add .
-git commit -sm"commit from sudo-1.8.6p3.tar.gz"
-git tag 1.8.6p3
-git checkout -b mer-1.8.6p3
-pristine-tar commit ../sudo-1.8.6p3.tar.gz  1.8.6p3
-git commit --allow-empty -m"pristine-tar-delta: Import any changes from the released tarball into the Mer source tree ready for local patches"
-git tag mer-1.8.6p3-1
-echo pristine-tar:sudo-1.8.6p3.tar.gz:mer-1.8.6p3-1
-
-git checkout pkg-mer
-
-# Hack on .yaml and .changes
-specify
-# Hack on .spec if needed
-gp_mkpkg 
-osc build Mer_Core_i486 i586
-# repeat cycle
-
-# Need to describe working on the source tree too
-
-osc ar
-osc ci
-# verify build on all arches
-
-git commit -as
-git tag pkg-mer-1.8.6p3-1
-git push --tags origin
-
-osc sr home:lbt:branches:Mer:Tools:Testing sudo Mer:Tools:Testing
-git pull request on github
-
-
+* The tarball uses src/ as the location for git packages unless pristine-tar is in use
