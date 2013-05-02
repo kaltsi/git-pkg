@@ -180,6 +180,11 @@ def apply_patches_to_spec(args, p, specfilename):
     Patch_match = re.compile(r"^Patch")
     prep_match = re.compile(r"^%prep")
     patch_match = re.compile(r"^%patch")
+    setup_comment = "# Adjusting %%setup since git-pkg unpacks to src/\n"
+    setup_comment_present = False
+
+    if setup_comment in open(specfilename).read():
+        setup_comment_present = True
 
     # Skip to the SourceXX: line
     line = "python has no do: while syntax"
@@ -227,11 +232,16 @@ def apply_patches_to_spec(args, p, specfilename):
             else:
                 done_setup = True
                 if args.setup_src:
-                    print "Adjusting %setup since git-pkg unpacks to src/"
-                    spec_new.extend("# Adjusting %%setup since git-pkg unpacks to src/\n")
-                    spec_new.extend("# %s" % re.sub(r'%', '%%', line))
+                    # use sys.stdout instead of print to get rid of
+                    # the automatic linefeed, which is already
+                    # included in setup_comment
+                    sys.stdout.write(setup_comment)
+                    if not setup_comment_present:
+                        spec_new.extend(setup_comment)
+                        spec_new.extend("# %s" % re.sub(r'%', '%%', line))
+                        setup_comment_present = True
                     print line.strip()
-                    line = re.sub(r'^%setup(.*)(\s-n\s+\S*)?(.*)$', r'%setup\1 -n src\3', line)
+                    line = re.sub(r'^%setup(.*(?=-n))(-n\s+\S*)(.*$)', r'%setup \1 -n src \3', line)
                     print "converted to"
                     print line.strip()
                 # Now output modified or orig %setup and any patches
