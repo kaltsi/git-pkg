@@ -98,6 +98,17 @@ cat <<EOF
                   contains .gz / .bz2 / .xz files which would
                   otherwise be discarded
 
+       --pristine This allows an upstream git tree to be used in
+                  conjunction with pristine-tar. It is useful when
+                  upstream modify the source which is tagged in
+                  git. Upstream modifications are preserved as an
+                  initial commit which ensures that when mer-master is
+                  checked-out it contains the same information as the
+                  pristine tarball. For build purposes the actual
+                  pristine tarball is used together with any
+                  patches. Typically use with --base-on to specify a
+                  suitable tag.
+
 EOF
 }
 
@@ -195,10 +206,11 @@ use_existing() {
     tarball=${tarball:-$name.tar.bz2}
     echo "Using tarball: $tarball"
 
-    # If this is a pure pristine-tar with no git tree then just unpack
-    # the tarball as a starting point
-    if [[ $gp_type == "pristine-tar" && $unpack ]] ; then
-	echo "Pristine tar : Unpacking tarball as initial commit"
+    # If this is an unpack then it is pristine-tar with no
+    # git tree so unpack the tarball as a starting point
+    if [[ $unpack ]] ; then
+	echo "Unpack so setting pristine-tar : Unpacking tarball as initial commit"
+	gp_type="pristine-tar"
 	unpack_tarball $pkgdir/$tarball
 	git add .
 	git commit -q -m"Initial commit from $tarball"
@@ -245,6 +257,7 @@ use_existing() {
 		read dummy
 	    fi
 	fi
+	git add --all . # Ensure we get any added/removed files too
 	git commit -q -am"$(basename $patch .patch)"
 	have_patches=1
     done
@@ -308,7 +321,7 @@ use_existing() {
     echo for _src
 
     # and a reminder not to bitch *too* much
-    echo "gp_setup --existing isn't thoroughly tested - please fix and/or report any bugs you find"
+    echo "gp_setup --auto isn't thoroughly tested - please fix and/or report any bugs you find"
 }
 
 usage_pkg(){
